@@ -1,0 +1,5311 @@
+---
+title: "CHIC Landscape Analysis Exploratory Analysis"
+author: "Danica Shipley"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged # Allows for scrolling on tables or visualizations
+    theme: cerulean
+    toc: TRUE # Table of contents
+    toc_float: TRUE # Table of contents
+---
+
+```{css, echo=FALSE}
+# Increase width of HTML output
+body .main-container {
+max-width: 1600px !important;
+width: 1600px !important;
+}
+body {
+max-width: 1680px !important;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(results = 'asis')
+# knitr::opts_chunk$set(fig.width = 25)
+```
+
+```{r package set-up, include = FALSE}
+pacman::p_load(dplyr, tidyr, readr, stringr, ggplot2, knitr, scales, httr, magrittr, lubridate, janitor, devtools, here, formattable, purrr, kableExtra, flextable, tidyverse, officer, kableExtra, gt, pander, rmarkdown, corrplot, RColorBrewer, ggcorrplot)
+
+# Checkout the redoc package/functions regarding updating updates from the word doc back into the code automatically vs. manually
+  ## https://bookdown.org/yihui/rmarkdown-cookbook/word-redoc.html
+```
+
+```{r import files}
+
+# Cleaned FY19 Data
+load(here::here("Data/Clean/chic_landscape_analysis_cleaned_data.rda"))
+
+# Create some vectors to use in functions to iterate through the function with different groups vs. copy/pasting code
+  # Define the subgroups to be run through
+ind_subgroups <- c("race","gender_identity", "age", "children_range", "childrens_caretaker", "marital_status", "edu_level", "household_income", "city")
+woc_ind_subgroups <- c("race", "age", "children_range", "childrens_caretaker", "marital_status", "edu_level", "household_income", "city")
+```
+
+# Methodology
+
+```{r individual clean df}
+# Create a range of children of individual responses
+ind_clean_df <- ind_clean_final %>%
+  ungroup() %>%
+  mutate(children_range = case_when(
+    num_children == 0 ~ "0",
+    between(num_children, 1, 3) ~ "1-3",
+    between(num_children, 4, 6) ~ "4-6",
+    between(num_children, 7, 10) ~ "7-10",
+    num_children >10 ~ "11+")) %>%
+  mutate(edu_level = case_when(
+    str_detect(edu_level, "High school") ~ "HS Grad or Eq",
+    TRUE ~ edu_level)) %>%
+  # Add in WOC Flag
+  mutate(woc = case_when(
+    (gender_identity == "Female" & str_detect(race, "Hispanic|More Race|Black|Asian|Indian")) ~ "Yes",
+    TRUE ~ "No")) %>%
+  select(respondent_id:gender_identity, woc, age:num_children, children_range, childrens_caretaker:response) %>%
+  # Clean up issue with English survey around responses to voting questions
+  mutate(response = case_when(
+    str_detect(response, "Very Important|Very Important") ~ "Very Important",
+    TRUE ~ response),
+    response = case_when(
+      (str_detect(response, "Very") & str_detect(response, "easy")) ~  "Very Easy",
+      TRUE ~ response),
+    response = str_trim(response)) %>%
+  ungroup() %>%
+  unique()
+
+  
+```
+
+```{r individual respondent count, results='hide'}
+### Number of Participants
+# How many people participated in the survey
+ind_respondent_count <- ind_clean_df %>%
+  select(respondent_id) %>%
+  unique() %>%
+  summarize(respondent_count = n())
+
+ind_respondent_count
+```
+
+
+```{r individual respondent woc count, results='hide'}
+### Number of Participants who Identify as Women of Color
+# How many people participated in the survey
+ind_respondent_woc_count <- ind_clean_df %>%
+  filter(woc == "Yes") %>%
+  select(respondent_id) %>%
+  unique() %>%
+  summarize(woc_respondent_count = n())
+
+ind_respondent_woc_count
+```
+```{r}
+intro <- paste("Overall, ", ind_respondent_count, "people participated in CHIC's community survey; ", ind_respondent_woc_count, " of whom identified as Women of Color. The survey ran from August 24, 2020 to September 27, 2020 and was administered in both English and Spanish.")
+```
+
+## Individual Survey Respondents {.tabset}
+**Community Survey Respondents**
+`r intro`
+
+### All Respondents {.tabset}
+```{r individual respondents comp 1 level}
+# Write function to create single variable tables by demographics
+ind_comp <- function(ind_subgroups) {
+  ind_clean_df %>%
+    select(respondent_id:city) %>%
+    unique() %>%
+    group_by(.data[[ind_subgroups]]) %>%
+    tabyl(.data[[ind_subgroups]]) %>%
+  adorn_pct_formatting()
+}
+
+# Output the individual survey composition across demographics
+ind_comp_tbls <- map(ind_subgroups, ind_comp)
+
+# Create unique df
+for (i in seq(ind_comp_tbls)) {
+  assign(paste0("ind_comp1l_", i), ind_comp_tbls[[i]])
+}
+```
+
+#### Race
+```{r, layout="l-body-outset", fig.width = 20}
+ind_comp1l_1 %>%
+  paged_table()
+```
+
+#### Gender Identity
+```{r, layout="l-body-outset", fig.width = 5}
+paged_table(ind_comp1l_2)
+```
+
+#### Age Band
+```{r, layout="l-body-outset"}
+paged_table(ind_comp1l_3)
+```
+
+#### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(ind_comp1l_4)
+```
+
+#### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(ind_comp1l_5)
+```
+
+#### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(ind_comp1l_6)
+```
+
+#### Education Level
+```{r, layout="l-body-outset"}
+paged_table(ind_comp1l_7)
+```
+
+#### Household Income
+```{r, layout="l-body-outset"}
+paged_table(ind_comp1l_8)
+```
+
+
+#### City {.tabset}
+
+##### Total
+```{r, layout="l-body-outset"}
+paged_table(ind_comp1l_9)
+```
+
+##### Race/Ethnicity by City
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(city == "Aurora" | city == "Denver") %>%
+  select(respondent_id,city, race) %>%
+  unique() %>%
+  group_by(city, race) %>%
+  tabyl(city, race) %>%
+  adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+  adorn_ns()%>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+
+##### Age by City
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(city == "Aurora" | city == "Denver") %>%
+  select(respondent_id,city, age) %>%
+  unique() %>%
+  group_by(city, age) %>%
+  tabyl(city, age) %>%
+  adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+  adorn_ns()%>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+
+```
+
+##### Household Income by City
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(city == "Aurora" | city == "Denver") %>%
+  select(respondent_id,city, household_income) %>%
+  unique() %>%
+  group_by(city, household_income) %>%
+  tabyl(city, household_income) %>%
+  adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+  adorn_ns()%>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+```{r}
+# Remove all respondent datasets to keep environment clean
+rm(ind_comp1l_1, ind_comp1l_2, ind_comp1l_3, ind_comp1l_4, ind_comp1l_5, ind_comp1l_6, ind_comp1l_7, ind_comp1l_8, ind_comp1l_9)
+
+```
+
+### Women of Color Respondents {.tabset}
+```{r individual respondents comp 2 levels}
+# Write function to create single variable tables by demographics
+woc_ind_comp <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(woc == "Yes") %>%
+    select(respondent_id:city) %>%
+    unique() %>%
+    group_by(.data[[woc_ind_subgroups]]) %>%
+    tabyl(.data[[woc_ind_subgroups]]) %>%
+  adorn_pct_formatting()
+}
+
+# Output the individual survey composition across demographics
+woc_ind_comp_tbls <- map(woc_ind_subgroups, woc_ind_comp)
+
+# Create unique df
+for (i in seq(woc_ind_comp_tbls)) {
+  assign(paste0("woc_ind_comp1l_", i), woc_ind_comp_tbls[[i]])
+}
+```
+#### Race
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_1)
+```
+
+#### Age Band
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_2)
+```
+
+#### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_3)
+```
+
+#### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_4)
+```
+
+#### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_5)
+```
+
+#### Education Level
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_6)
+```
+
+#### Household Income
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_7)
+```
+
+
+#### City {.tabset}
+##### Total
+```{r, layout="l-body-outset"}
+paged_table(woc_ind_comp1l_8)
+```
+
+##### Race/Ethnicity by City
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(woc == "Yes",
+         city == "Aurora" | city == "Denver") %>%
+  select(respondent_id,city, race) %>%
+  unique() %>%
+  group_by(city, race) %>%
+  tabyl(city, race) %>%
+  adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+  adorn_ns()%>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+
+##### Age by City
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(woc == "Yes",
+         city == "Aurora" | city == "Denver") %>%
+  select(respondent_id,city, age) %>%
+  unique() %>%
+  group_by(city, age) %>%
+  tabyl(city, age) %>%
+  adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+  adorn_ns()%>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+
+```
+
+##### Household Income by City
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(woc == "Yes",
+         city == "Aurora" | city == "Denver") %>%
+  select(respondent_id,city, household_income) %>%
+  unique() %>%
+  group_by(city, household_income) %>%
+  tabyl(city, household_income) %>%
+  adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+  adorn_ns()%>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+```{r}
+# Remove all woc respondent datasets to keep environment clean
+rm(woc_ind_comp1l_1, woc_ind_comp1l_2, woc_ind_comp1l_3, woc_ind_comp1l_4, woc_ind_comp1l_5, woc_ind_comp1l_6, woc_ind_comp1l_7, woc_ind_comp1l_8)
+
+```
+## Partner Organization Respondents {.tabset}
+
+**Organization Respondents**
+```{r org count, results='hide'}
+### Number of Participants
+# How many people participated in the survey
+org_respondent_count <- comm_org_clean %>%
+  select(respondent_id) %>%
+  unique() %>%
+  summarize(respondent_count = n())
+
+org_respondent_count
+```
+
+
+```{r}
+intro_org <- paste("A total of", org_respondent_count, "community organizations participated in CHIC's Landscape Analysis, with survey's running from August 24, 2020 to September 27, 2020.")
+```
+`r intro_org`
+
+### Organization Type
+```{r, layout="l-body-outset"}
+comm_org_clean %>%
+  select(respondent_id, org_type) %>%
+  unique() %>%
+  group_by(org_type) %>%
+  tabyl(org_type) %>%
+  adorn_pct_formatting() %>%
+  paged_table()
+```
+
+### Target Communities
+
+```{r, layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(main_question, "What communities does your organization seek to serve")) %>%
+  group_by(response) %>%
+  tabyl(response) %>%
+  adorn_pct_formatting() %>%
+  paged_table()
+```
+
+### Average Staff Racial Representation {.tabset}
+#### All Organizations
+```{r, layout="l-body-outset"}
+# Create dataframe that has checked to make sure % total to 100%
+staff_rep <- comm_org_clean %>%
+  filter(main_question == "Racial Representation of Staff") %>%
+  select(-c(main_question)) %>%
+  mutate(response = as.numeric(response),
+         response = case_when(
+           is.na(response) ~ 0,
+           TRUE ~ response)) %>%
+  ungroup() %>%
+  group_by(respondent_id) %>%
+  mutate(total = sum(response, na.rm = TRUE)) %>%
+  arrange(respondent_id) %>%
+  filter(total > 99,
+         !str_detect(question, "Some other race|Middle"))
+
+
+staff_rep %>%
+  select(-c(total, org_type)) %>%
+  ungroup() %>%
+  group_by(question) %>%
+  mutate(average = paste(round(mean(response, na.rm = TRUE),2), "%", sep="")) %>%
+  select(-c(respondent_id, response)) %>%
+  unique() %>%
+  paged_table()
+```
+#### Organization Type
+```{r, layout="l-body-outset"}
+# Create dataframe that has checked to make sure % total to 100%
+staff_rep %>%
+  select(-c(total)) %>%
+  ungroup() %>%
+  group_by(org_type, question) %>%
+  mutate(average = paste(round(mean(response, na.rm = TRUE),2), "%", sep=""),
+         count = n(),
+         org_type = paste(org_type, " (n=", count, ")", sep = "")) %>%
+  select(-c(respondent_id, response, count)) %>%
+  unique() %>%
+  spread(key = "question", value = "average") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+#### By Target Community
+```{r, layout="l-body-outset"}
+# Create dataframe supplemental data frames to join with staff_rep for target community and focal area cuts
+target_community <- comm_org_clean %>%
+  filter(question == "Target Communities",
+         !is.na(response)) %>%
+  select(-c(org_type, main_question, question)) %>%
+           rename(target_communities = response)
+
+staff_rep %>%
+  left_join(target_community, by = "respondent_id") %>%
+  select(respondent_id, target_communities, question, response) %>%
+  ungroup() %>%
+  group_by(target_communities, question) %>%
+  mutate(average = paste(round(mean(response, na.rm = TRUE),2), "%", sep=""),
+         count = n(),
+         target_communities = paste(target_communities, " (n=", count, ")", sep = "")) %>%
+  select(-c(respondent_id, response)) %>%
+  unique() %>%
+  spread(key = "question", value = "average") %>%
+  filter(!str_detect(target_communities, "NA|Other")) %>%
+  arrange(desc(count), target_communities) %>%
+  select(-count) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+#### By Focal Areas
+```{r, layout="l-body-outset"}
+# Create dataframe supplemental data frames to join with staff_rep for target community and focal area cuts
+focal_areas <- comm_org_clean %>%
+  filter(question == "Focal Areas",
+         !is.na(response)) %>%
+  select(-c(org_type, main_question, question)) %>%
+           rename(focal_areas = response)
+  
+staff_rep %>%
+  left_join(focal_areas, by = "respondent_id") %>%
+  select(respondent_id, focal_areas, question, response) %>%
+  ungroup() %>%
+  group_by(focal_areas, question) %>%
+  mutate(average = paste(round(mean(response, na.rm = TRUE),2), "%", sep=""),
+         count = n(),
+         focal_areas = paste(focal_areas, " (n=", count, ")", sep = "")) %>%
+  select(-c(respondent_id, response)) %>%
+  unique() %>%
+  spread(key = "question", value = "average") %>%
+  filter(!str_detect(focal_areas, "NA|Other")) %>%
+  arrange(desc(count), focal_areas) %>%
+  select(-count) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+### HR/Talent Management Practices Intended to Increase Organizational Diversity & Inclusion
+```{r}
+comm_org_clean %>%
+  filter(str_detect(question, "Talent management")) %>%
+  group_by(response) %>%
+  tabyl(response) %>%
+  adorn_pct_formatting() %>%
+  paged_table()
+```
+
+### Ways in Which HR/Talent Management Practices Promote Diversity
+
+```{r}
+comm_org_clean %>%
+  filter(str_detect(main_question, "in which ways"),
+         !is.na(response)) %>%
+  group_by(response) %>%
+  summarize(count = n(),
+            perc = paste(round(count/org_respondent_count$respondent_count * 100, 2), "%", sep = "")) %>%
+  mutate(response = case_when(
+    response == "practices/policies" ~ "General practices/policies",
+    TRUE ~ response)) %>%
+  paged_table()
+```
+
+
+### Average Communities Served Racials Representation
+```{r, layout="l-body-outset"}
+# Create dataframe that has checked to make sure % total to 100%
+community_rep <- comm_org_clean %>%
+  filter(main_question == "Racial Representation of Communities Served") %>%
+  select(-c(main_question, org_type)) %>%
+  mutate(response = as.numeric(response),
+         response = case_when(
+           is.na(response) ~ 0,
+           TRUE ~ response)) %>%
+  ungroup() %>%
+  group_by(respondent_id) %>%
+  mutate(total = sum(response, na.rm = TRUE)) %>%
+  arrange(respondent_id) %>%
+  filter(total > 99)
+
+
+community_rep %>%
+  select(-total) %>%
+  ungroup() %>%
+  group_by(question) %>%
+  mutate(average = paste(round(mean(response, na.rm = TRUE),2), "%", sep="")) %>%
+  select(-c(respondent_id, response)) %>%
+  unique() %>%
+  paged_table()
+```
+
+### Average Clients' Racial Representation
+```{r, layout="l-body-outset"}
+# Create dataframe that has checked to make sure % total to 100%
+clients_rep <- comm_org_clean %>%
+  filter(main_question == "Racial Representation of Clients") %>%
+  select(-c(main_question, org_type)) %>%
+  mutate(response = as.numeric(response),
+         response = case_when(
+           is.na(response) ~ 0,
+           TRUE ~ response)) %>%
+  ungroup() %>%
+  group_by(respondent_id) %>%
+  mutate(total = sum(response, na.rm = TRUE)) %>%
+  arrange(respondent_id) %>%
+  filter(total > 99)
+
+
+clients_rep %>%
+  select(-total) %>%
+  ungroup() %>%
+  group_by(question) %>%
+  mutate(average = paste(round(mean(response, na.rm = TRUE),2), "%", sep="")) %>%
+  select(-c(respondent_id, response)) %>%
+  unique() %>%
+  paged_table()
+```
+
+### Percent fo Orgs Serving Metro Denver Cities
+```{r, layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(main_question, "What cities does your organization serve"),
+         !is.na(response)) %>%
+  group_by(response) %>%
+  summarize(count = n()) %>%
+  mutate(perc = paste(round((count/org_respondent_count$respondent_count)*100, 2), "%", sep="")) %>%
+  arrange(desc(perc)) %>%
+  paged_table()
+```
+
+# Exploratory Data Analysis
+## What needs exist in communities and for Women of Color?
+### Employment
+#### Community Q1: Are You Able to Work {.tabset}
+##### All Respondents {.tabset}
+```{r q1 are you able to work all }
+# Ability to work
+ability2work_t <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Are you able to work"),
+           !is.na(.data[[ind_subgroups]])) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Save the individual tables across demographics
+ability2work_t_tbls <- map(ind_subgroups, ability2work_t)
+
+# Create unique df
+for (i in seq(ability2work_t_tbls)){
+  assign(paste0("a2w_", i), ability2work_t_tbls[[i]])
+}
+```
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Are you able to work")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+###### Race
+```{r, layout="l-body-outset"}
+paged_table(a2w_1)
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+paged_table(a2w_2)
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+paged_table(a2w_3)
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(a2w_4)
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(a2w_5)
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(a2w_6)
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+paged_table(a2w_7)
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+paged_table(a2w_8)
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+paged_table(a2w_9)
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(a2w_1, a2w_2, a2w_3, a2w_4, a2w_5, a2w_6, a2w_7, a2w_8, a2w_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r q1 are you able to work WoC}
+# Write function to create single variable tables by demographics
+ability2work_w <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Are you able to work"),
+           !is.na(.data[[woc_ind_subgroups]]),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+ability2work_w_tbls <- map(woc_ind_subgroups, ability2work_w)
+
+# Create unique df
+for (i in seq(ability2work_w_tbls)) {
+  assign(paste0("a2w_w_", i), ability2work_w_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Are you able to work"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_1)
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_2)
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_3)
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_4)
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_5)
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_6)
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_7)
+```
+
+###### City
+```{r, layout="l-body-outset"}
+paged_table(a2w_w_8)
+```
+
+```{r}
+# Remove all woc respondent datasets to keep environment clean
+rm(a2w_w_1, a2w_w_2, a2w_w_3, a2w_w_4, a2w_w_5, a2w_w_6, a2w_w_7, a2w_w_8)
+
+```
+
+
+#### Community Q2. Which of the following categories best describes your employment status? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Employment Status
+emp_status_t <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Which of the following categories best describes your employment status"),
+           !is.na(.data[[ind_subgroups]])) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+emp_status_t_tbls <- map(ind_subgroups, emp_status_t)
+
+# Create unique df
+for (i in seq(emp_status_t_tbls)){
+  assign(paste0("emp_status_", i), emp_status_t_tbls[[i]])
+}
+```
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Which of the following categories best describes your employment status")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+emp_status_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+emp_status_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+emp_status_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+emp_status_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+emp_status_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+emp_status_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+emp_status_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+emp_status_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+emp_status_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(emp_status_1, emp_status_2, emp_status_3, emp_status_4, emp_status_5, emp_status_6, emp_status_7, emp_status_8, emp_status_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Employment Status
+emp_status_w <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Which of the following categories best describes your employment status"),
+           !is.na(.data[[woc_ind_subgroups]]),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+emp_status_w_tbls <- map(woc_ind_subgroups, emp_status_w)
+
+# Create unique df
+for (i in seq(emp_status_w_tbls)){
+  assign(paste0("w_emp_status_", i), emp_status_w_tbls[[i]])
+}
+```
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Which of the following categories best describes your employment status"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+###### Race
+```{r, layout="l-body-outset"}
+w_emp_status_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+w_emp_status_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+w_emp_status_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+w_emp_status_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+w_emp_status_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+w_emp_status_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+w_emp_status_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+w_emp_status_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+```{r}
+# Remove all woc respondent datasets to keep environment clean
+rm(w_emp_status_1, w_emp_status_2, w_emp_status_3, w_emp_status_4, w_emp_status_5, w_emp_status_6, w_emp_status_7, w_emp_status_8)
+```
+
+
+#### Community Q3. Reasons for Unemployment {.tabset}
+##### All Repondents {.tabset}
+```{r}
+# Reason for unemployment
+unemp_reason_t <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(main_question, "If you are unemployed"),
+           !is.na(.data[[ind_subgroups]])) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+unemp_reason_t_tbls <- map(ind_subgroups, unemp_reason_t)
+
+# Create unique df
+for (i in seq(unemp_reason_t_tbls)) {
+  assign(paste0("unemp_r_", i), unemp_reason_t_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(main_question, "If you are unemployed")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+unemp_r_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+unemp_r_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+unemp_r_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+unemp_r_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+unemp_r_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+unemp_r_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+unemp_r_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+unemp_r_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+unemp_r_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(unemp_r_1, unemp_r_2, unemp_r_3, unemp_r_4, unemp_r_5, unemp_r_6, unemp_r_7, unemp_r_8, unemp_r_9)
+```
+
+##### Women of Color Repondents {.tabset}
+```{r}
+# Reason for unemployment
+unemp_reason_w <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(main_question, "If you are unemployed"),
+           !is.na(.data[[woc_ind_subgroups]]),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+unemp_reason_w_tbls <- map(woc_ind_subgroups, unemp_reason_w)
+
+# Create unique df
+for (i in seq(unemp_reason_w_tbls)) {
+  assign(paste0("w_unemp_r_", i), unemp_reason_w_tbls[[i]])
+}
+```
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(main_question, "If you are unemployed"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+###### Race
+```{r, layout="l-body-outset"}
+w_unemp_r_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+w_unemp_r_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+w_unemp_r_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+w_unemp_r_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+w_unemp_r_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+w_unemp_r_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+w_unemp_r_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+w_unemp_r_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+```{r}
+# Remove all woc respondent datasets to keep environment clean
+rm(w_unemp_r_1, w_unemp_r_2, w_unemp_r_3, w_unemp_r_4, w_unemp_r_5, w_unemp_r_6, w_unemp_r_7, w_unemp_r_8)
+```
+
+#### Community Q4. Have you had a change in employment due to Coronavirus? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+covid_emp <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Have you had a change in employment due to Coronavirus")) %>%
+    group_by(.data[[ind_subgroups, response]]) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+covid_emp_tbls <- map(ind_subgroups, covid_emp)
+
+# Create unique df
+for (i in seq(covid_emp_tbls)) {
+  assign(paste0("covid_emp_t_", i), covid_emp_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Have you had a change in employment due to Coronavirus")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_1)
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_2)
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_3)
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_4)
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_5)
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_6)
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_7)
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_8)
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_t_9)
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(covid_emp_t_1, covid_emp_t_2, covid_emp_t_3, covid_emp_t_4, covid_emp_t_5, covid_emp_t_6, covid_emp_t_7, covid_emp_t_8, covid_emp_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_covid_emp <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Have you had a change in employment due to Coronavirus"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_covid_emp_tbls <- map(woc_ind_subgroups, w_covid_emp)
+
+# Create unique df
+for (i in seq(w_covid_emp_tbls)) {
+  assign(paste0("covid_emp_w_", i), w_covid_emp_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Have you had a change in employment due to Coronavirus"),
+          woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_1)
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_2)
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_3)
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_4)
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_5)
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_6)
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_7)
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+paged_table(covid_emp_w_8)
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(covid_emp_w_1, covid_emp_w_2, covid_emp_w_3, covid_emp_w_4, covid_emp_w_5, covid_emp_w_6, covid_emp_w_7, covid_emp_w_8)
+```
+
+
+#### Community Q5. If you are employed, are you able to work from home? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+wfh_emp <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "If you are employed, are you able to work from home")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+wfh_tbls <- map(ind_subgroups, wfh_emp)
+
+# Create unique df
+for (i in seq(wfh_tbls)) {
+  assign(paste0("wfh_t_", i), wfh_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "If you are employed, are you able to work from home")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_1)
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_2)
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_3)
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_4)
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_5)
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_6)
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_7)
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_8)
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+paged_table(wfh_t_9)
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(wfh_t_1, wfh_t_2, wfh_t_3, wfh_t_4, wfh_t_5, wfh_t_6, wfh_t_7, wfh_t_8, wfh_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_wfh <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "If you are employed, are you able to work from home"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_wfh_tbls <- map(woc_ind_subgroups, w_wfh)
+
+# Create unique df
+for (i in seq(w_wfh_tbls)) {
+  assign(paste0("wfh_w_", i), w_wfh_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "If you are employed, are you able to work from home"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_1)
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_2)
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_3)
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_4)
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_5)
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_6)
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_7)
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+paged_table(wfh_w_8)
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(wfh_w_1, wfh_w_2, wfh_w_3, wfh_w_4, wfh_w_5, wfh_w_6, wfh_w_7, wfh_w_8)
+```
+### Issues Important to the Community
+#### Community Q6. What 3 issues are most important to you and your family? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+top_issues <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Top 3 Important Issues")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+top_issues_tbls <- map(ind_subgroups, top_issues)
+
+# Create unique df
+for (i in seq(top_issues_tbls)) {
+  assign(paste0("top_issues_t_", i), top_issues_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-screen-inset"}
+
+ind_clean_df %>%
+    filter(str_detect(question, "Top 3 Important Issues")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+top_issues_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+top_issues_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+top_issues_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+top_issues_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+top_issues_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+top_issues_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+top_issues_t_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+top_issues_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+top_issues_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(top_issues_t_1, top_issues_t_2, top_issues_t_3, top_issues_t_4, top_issues_t_5, top_issues_t_6, top_issues_t_7, top_issues_t_8, top_issues_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_top_issues <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Top 3 Important Issues"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_top_issues_tbls <- map(woc_ind_subgroups, w_top_issues)
+
+# Create unique df
+for (i in seq(w_top_issues_tbls)) {
+  assign(paste0("top_issues_w_", i), w_top_issues_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Top 3 Important Issues"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+top_issues_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+top_issues_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+top_issues_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+top_issues_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+top_issues_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+top_issues_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+top_issues_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+top_issues_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(top_issues_w_1, top_issues_w_2, top_issues_w_3, top_issues_w_4, top_issues_w_5, top_issues_w_6, top_issues_w_7, top_issues_w_8)
+```
+
+
+#### Community Q7.  How EASY or DIFFICULT is it for you to access community supports or resources for each of the following needs? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+resource_access <- function(ind_subgroups) {
+  ind_clean_df %>%
+  filter(str_detect(main_question, "How EASY or DIFFICULT is it for you to access community")) %>%
+  group_by(question, .data[[ind_subgroups]], response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question, .data[[ind_subgroups]]) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, .data[[ind_subgroups]], base_size, `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`, `Very Easy`)
+}
+
+# Output the individual survey composition across demographics
+resource_access_tbls <- map(ind_subgroups, resource_access)
+
+# Create unique df
+for (i in seq(resource_access_tbls)) {
+  assign(paste0("resource_access_t_", i), resource_access_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(str_detect(main_question, "How EASY or DIFFICULT is it for you to access community")) %>%
+  group_by(question, response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, base_size, `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`, `Very Easy`)  %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+resource_access_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+resource_access_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+resource_access_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+resource_access_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+resource_access_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+resource_access_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+resource_access_t_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+resource_access_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+resource_access_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(resource_access_t_1, resource_access_t_2, resource_access_t_3, resource_access_t_4, resource_access_t_5, resource_access_t_6, resource_access_t_7, resource_access_t_8, resource_access_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_resource_access <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+  filter(str_detect(main_question, "How EASY or DIFFICULT is it for you to access community"),
+         woc == "Yes") %>%
+  group_by(question, .data[[woc_ind_subgroups]], response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question, .data[[woc_ind_subgroups]]) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, .data[[woc_ind_subgroups]], base_size, `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`, `Very Easy`)
+}
+
+# Output the individual survey composition across demographics
+w_resource_access_tbls <- map(woc_ind_subgroups, w_resource_access)
+
+# Create unique df
+for (i in seq(w_resource_access_tbls)) {
+  assign(paste0("resource_access_w_", i), w_resource_access_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(str_detect(main_question, "How EASY or DIFFICULT is it for you to access community"),
+           woc == "Yes") %>%
+  group_by(question, response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, base_size, `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`, `Very Easy`) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+resource_access_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+resource_access_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+resource_access_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+resource_access_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+resource_access_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+resource_access_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+resource_access_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+resource_access_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(resource_access_w_1, resource_access_w_2, resource_access_w_3, resource_access_w_4, resource_access_w_5, resource_access_w_6, resource_access_w_7, resource_access_w_8)
+```
+
+#### Community Q8. How EFFECTIVE or INEFFECTIVE are community supports or resources for the following needs? {.tabset}
+##### All Respondents {.tabset}
+
+```{r}
+# Write function to create single variable tables by demographics
+supports_eff <- function(ind_subgroups) {
+  ind_clean_df %>%
+  filter(str_detect(str_to_lower(response), "effective")) %>%
+  group_by(question, .data[[ind_subgroups]], response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question, .data[[ind_subgroups]]) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, .data[[ind_subgroups]], base_size, `Very Ineffective`, `Ineffective`, `Somewhat Ineffective`, `Somewhat Effective`, `Effective`, `Very Effective`)
+}
+
+# Output the individual survey composition across demographics
+supports_eff_tbls <- map(ind_subgroups, supports_eff)
+
+# Create unique df
+for (i in seq(supports_eff_tbls)) {
+  assign(paste0("supports_eff_t_", i), supports_eff_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(str_detect(str_to_lower(response), "effective")) %>%
+  group_by(question, response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, base_size, `Very Ineffective`, `Ineffective`, `Somewhat Ineffective`, `Somewhat Effective`, `Effective`, `Very Effective`) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(heigh = "600px")
+  # paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+supports_eff_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+supports_eff_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+supports_eff_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+supports_eff_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+supports_eff_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+supports_eff_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+supports_eff_t_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+supports_eff_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+supports_eff_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(supports_eff_t_1, supports_eff_t_2, supports_eff_t_3, supports_eff_t_4, supports_eff_t_5, supports_eff_t_6, supports_eff_t_7, supports_eff_t_8, supports_eff_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_supports_eff <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+  filter(str_detect(str_to_lower(response), "effective"),
+         woc == "Yes") %>%
+  group_by(question, .data[[woc_ind_subgroups]], response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question, .data[[woc_ind_subgroups]]) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, .data[[woc_ind_subgroups]], base_size, `Very Ineffective`, `Ineffective`, `Somewhat Ineffective`, `Somewhat Effective`, `Effective`, `Very Effective`)
+}
+
+# Output the individual survey composition across demographics
+w_supports_eff_tbls <- map(woc_ind_subgroups, w_supports_eff)
+
+# Create unique df
+for (i in seq(w_supports_eff_tbls)) {
+  assign(paste0("supports_eff_w_", i), w_supports_eff_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+  filter(str_detect(str_to_lower(response), "effective"),
+         woc == "Yes") %>%
+  group_by(question, response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(question) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  select(-count) %>%
+  spread(key = "response", value = "perc") %>%
+  select(question, base_size, `Very Ineffective`, `Ineffective`, `Somewhat Ineffective`, `Somewhat Effective`, `Effective`, `Very Effective`) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+supports_eff_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+supports_eff_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+supports_eff_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+supports_eff_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+supports_eff_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+supports_eff_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+supports_eff_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+supports_eff_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+#### Relationship Between Services Being Rated Accessible and Effective {.tabset}
+Color scale is indicative of the strength and direction of the relationship between accessibility and effectiveness. If the correlation coefficient has an X over it, then it's not a significant relationship.
+
+##### Across All Issues
+```{r}
+# Reshape data for correlation analysis
+corr_access_effective <- ind_clean_df %>%
+  filter(str_detect(main_question, "for you to access|EFFECTIVE or INEFFECTIVE"),
+         response != "Does Not Apply") %>%
+  mutate(response_num = case_when(
+    (response == "Very Easy" | response == "Very Effective") ~ 5,
+    (response == "Easy" | response == "Effective") ~ 4,
+    (response == "Somewhat Easy" | response == "Somewhat Effective") ~ 3,
+    (response == "Somewhat Difficult" | response == "Somewhat Ineffective") ~ 2,
+    (response == "Difficult" | response == "Ineffective") ~ 1,
+    (response == "Very Difficult" | response == "Very Ineffective") ~ 0
+  )) %>%
+  select(respondent_id, main_question, question, response_num) %>%
+  mutate(main_question = case_when(
+    str_detect(main_question, "How EASY") ~ "accessibility",
+    str_detect(main_question, "EFFECTIVE") ~ "effectiveness")) %>%
+  filter(!is.na(response_num)) %>%
+  mutate(question = case_when(
+    str_detect(question, "after school") ~ "Education",
+    str_detect(question, "basic health care") ~ "Health",
+    str_detect(question, "Housing assistance") ~ "Housing Assitance",
+    str_detect(question, "Financial assistance") ~ "Financial Assitance",
+    str_detect(question, "therapy") ~ "Mental Health",
+    str_detect(question, "Youth safety") ~ "Youth Safety",
+    str_detect(question, "Business assistance") ~ "Business Assitance",
+    str_detect(question, "Adult Education") ~ "Adult Education",
+    str_detect(question, "Employment assistance") ~ "Employment Assitance",
+    str_detect(question, "Advocacy") ~ "Advocacy",
+    TRUE ~ question)) %>%
+  group_by(respondent_id, question) %>%
+  spread(key = "main_question", value = "response_num") %>%
+  # For correlation analysis data must be complete so create field that can be used to exclude incomplete data
+  mutate(complete = ifelse(!is.na(accessibility) & !is.na(effectiveness), "y", "n")) %>%
+  filter(complete == "y") %>% 
+  ungroup()
+
+# Correlation Analysis for All Issues Combined
+corr_all <-
+  as.matrix(corr_access_effective %>%
+            select(accessibility, effectiveness))
+
+# plot
+ggcorrplot(cor(corr_all), p.mat = cor_pmat(corr_all), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 4,
+          title = "Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+```
+
+```{r}
+##### By Individual Issue
+
+# Create function that creates a corr plot for each issue
+# Split main dataframe into individual issue dataframes
+issue_corr_access_effective <- split(corr_access_effective %>%
+                                       filter(complete == "y") %>%
+                                       select(-c(respondent_id, complete)),
+                                     f = corr_access_effective$question)
+
+# Breakout individual dataframes
+# Create unique df
+for (i in seq(issue_corr_access_effective)) {
+  assign(paste0("issue_corr_", i), issue_corr_access_effective[[i]])
+}
+
+
+# Correlation Analysis for All Issues Combined
+corr_ind_issues <-
+  as.matrix(corr_access_effective %>%
+            select(question, accessibility, effectiveness))
+
+```
+
+##### Adult Education
+```{r}
+# Adult Education
+corr_adult_edu <-
+  as.matrix(issue_corr_1 %>%
+            select(accessibility, effectiveness))
+
+corr_adult_edu_plot <-
+  ggcorrplot(cor(corr_adult_edu), p.mat = cor_pmat(corr_adult_edu), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Adult Education: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_adult_edu_plot
+```
+
+##### Advocacy
+```{r}
+corr_advocacy <-
+  as.matrix(issue_corr_2 %>%
+            select(accessibility, effectiveness))
+
+corr_advocacy_plot <-
+  ggcorrplot(cor(corr_advocacy), p.mat = cor_pmat(corr_advocacy), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Advocacy: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_advocacy_plot
+```
+
+##### Business Assistance
+```{r}
+corr_business <-
+  as.matrix(issue_corr_3 %>%
+            select(accessibility, effectiveness))
+
+corr_business_plot <-
+  ggcorrplot(cor(corr_business), p.mat = cor_pmat(corr_business), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Business Assistance: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_business_plot
+```
+
+##### Criminal Justice
+```{r}
+corr_cjust <-
+  as.matrix(issue_corr_4 %>%
+            select(accessibility, effectiveness))
+
+corr_cjust_plot <-
+  ggcorrplot(cor(corr_cjust), p.mat = cor_pmat(corr_cjust), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Criminal Justive: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_cjust_plot
+```
+
+##### Education
+```{r}
+corr_edu <-
+  as.matrix(issue_corr_5 %>%
+            select(accessibility, effectiveness))
+
+corr_edu_plot <-
+  ggcorrplot(cor(corr_edu), p.mat = cor_pmat(corr_edu), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Education: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_edu_plot
+```
+
+##### Employment Assistance
+```{r}
+corr_emp <-
+  as.matrix(issue_corr_6 %>%
+            select(accessibility, effectiveness))
+
+corr_emp_plot <-
+  ggcorrplot(cor(corr_emp), p.mat = cor_pmat(corr_emp), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Employment Assistance: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_emp_plot
+```
+
+##### Financial Assistance
+```{r}
+corr_fin <-
+  as.matrix(issue_corr_7 %>%
+            select(accessibility, effectiveness))
+
+corr_fin_plot <-
+  ggcorrplot(cor(corr_fin), p.mat = cor_pmat(corr_fin), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Financial Assistance: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_fin_plot
+```
+
+##### Health
+```{r}
+corr_health <-
+  as.matrix(issue_corr_8 %>%
+            select(accessibility, effectiveness))
+
+corr_health_plot <-
+  ggcorrplot(cor(corr_health), p.mat = cor_pmat(corr_health), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Health: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_health_plot
+```
+
+##### Housing Assistance
+```{r}
+corr_housing <-
+  as.matrix(issue_corr_9 %>%
+            select(accessibility, effectiveness))
+
+corr_housing_plot <-
+  ggcorrplot(cor(corr_housing), p.mat = cor_pmat(corr_housing), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Housing Assistance: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_housing_plot
+```
+
+##### Mental Health
+```{r}
+corr_mental <-
+  as.matrix(issue_corr_10 %>%
+            select(accessibility, effectiveness))
+
+corr_mental_plot <-
+  ggcorrplot(cor(corr_mental), p.mat = cor_pmat(corr_mental), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Mental Health: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_mental_plot
+```
+
+##### Youth Safety
+```{r}
+corr_ysafety <-
+  as.matrix(issue_corr_11 %>%
+            select(accessibility, effectiveness))
+
+corr_ysafety_plot <-
+  ggcorrplot(cor(corr_ysafety), p.mat = cor_pmat(corr_ysafety), hc.order = TRUE, type = "lower", insig = "pch",
+          lab = TRUE, lab_size = 6,
+          sig.level = .05,
+          colors = c("red", "white", "darkgreen"),
+          tl.srt = 45,
+          digits = 2,
+          pch.col ="black",
+          pch.cex = 10,
+          title = "Youth Safety: Correlation Between Accessibility and Effectiveness\n(significane level = .05)") +
+  theme(axis.line.x = element_line(color = "black", size = 1),
+        axis.line.y = element_line(color = "black", size = 1))
+
+corr_ysafety_plot
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(supports_eff_w_1, supports_eff_w_2, supports_eff_w_3, supports_eff_w_4, supports_eff_w_5, supports_eff_w_6, supports_eff_w_7, supports_eff_w_8)
+```
+
+## Existing Services Supporting Communities and Women of Color
+#### Org Q7. What are your organization's primary focus areas? {.tabset}
+
+##### All Organizations
+```{r, , layout="l-body-outset"}
+comm_org_clean %>%
+  filter(question == "Focal Areas",
+         !is.na(response)) %>%
+  select(-main_question) %>%
+  group_by(response) %>%
+  summarize(count = n()) %>%
+  mutate(perc = paste(round(count/org_respondent_count$respondent_count*100,2), "%", sep="")) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+##### By Organization Type
+```{r, , layout="l-body-outset"}
+org_type_count <-comm_org_clean %>%
+  group_by(org_type) %>% 
+  select(respondent_id, org_type) %>%
+  unique() %>%
+  summarize(num_orgs = n())
+
+
+comm_org_clean %>%
+  filter(question == "Focal Areas",
+         !is.na(response)) %>%
+  select(-main_question) %>%
+  group_by(org_type, response) %>%
+  summarize(count = n()) %>%
+  left_join(org_type_count, by = "org_type") %>%
+  mutate(perc = paste(round(count/num_orgs*100,2), "%", sep="")) %>%
+  select(org_type, response, base_size = num_orgs, perc) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "375px")
+  # paged_table()
+```
+
+#### Org Q17.  How do you determine the kind of support and programs you provide to the community? {.tabset}
+
+##### All Organizations
+```{r, , layout="l-body-outset"}
+# Calculate the percent of orgs who use various tactics to determine supports
+comm_org_clean %>%
+  filter(str_detect(main_question, "determine the kind of support and programs"),
+         !is.na(response)) %>%
+  select(-main_question) %>% 
+  group_by(response) %>%
+  summarize(count = n()) %>%
+  mutate(perc = paste(round(count/org_respondent_count$respondent_count*100,2), "%", sep="")) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+##### By Organization Type
+```{r, , layout="l-body-outset"}
+# Calculate the percent of orgs who use various tactics to determine supports, by org type
+comm_org_clean %>%
+  filter(str_detect(main_question, "determine the kind of support and programs"),
+         !is.na(response)) %>%
+  select(-main_question) %>% 
+  group_by(org_type, response) %>%
+  summarize(count = n()) %>%
+  left_join(org_type_count, by = "org_type") %>%
+  mutate(perc = paste(round(count/num_orgs*100,2), "%", sep="")) %>%
+  select(org_type, response, base_size = num_orgs, perc) %>%
+  spread(key = "response", value = "perc")  %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "410px")
+  # paged_table()
+```
+
+#### Org Q18. Our organization seeks community input when determining future goals and initiatives? {.tabset}
+
+##### All Organizations
+```{r, , layout="l-body-outset"}
+# Calculate the percent of orgs who believe they seek community input
+comm_org_clean %>%
+  filter(str_detect(question, "community input when determining")) %>%
+  group_by(response) %>%
+  tabyl(response) %>%
+  adorn_pct_formatting() %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+##### By Organization Type
+```{r, , layout="l-body-outset"}
+# Calculate the percent of orgs who use various tactics to determine supports, by org type
+# Calculate the percent of orgs who believe they seek community input
+comm_org_clean %>%
+  filter(str_detect(question, "community input when determining")) %>%
+  group_by(org_type, response) %>%
+  summarize(count = n()) %>%
+  left_join(org_type_count, by = "org_type") %>%
+  mutate(perc = paste(round(count/num_orgs*100,2), "%", sep="")) %>%
+  select(org_type, response, base_size = num_orgs, perc) %>%
+  spread(key = "response", value = "perc") %>%
+  select(org_type, base_size, `<NA>`, `Strongly Disagree`, `Somewhat Agree`, `Agree`, `Strongly Agree`) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+#### Community Q17. In the past 12 months, which of the following issue areas has a community organization engaged you in? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+eng_issues <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Issue areas engaged in by community organizations")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+eng_issues_tbls <- map(ind_subgroups, eng_issues)
+
+# Create unique df
+for (i in seq(eng_issues_tbls)) {
+  assign(paste0("eng_issues_t_", i), eng_issues_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-screen-inset"}
+
+ind_clean_df %>%
+    filter(str_detect(question, "Issue areas engaged in by community organizations")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  arrange(desc(n)) %>%
+  # kable(align = "c") %>%
+  # kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  # scroll_box(height = "300px")
+    paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+eng_issues_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+eng_issues_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+eng_issues_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+eng_issues_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+eng_issues_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+eng_issues_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+eng_issues_t_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+eng_issues_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+eng_issues_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(eng_issues_t_1, eng_issues_t_2, eng_issues_t_3, eng_issues_t_4, eng_issues_t_5, eng_issues_t_6, eng_issues_t_7, eng_issues_t_8, eng_issues_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_eng_issues <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Issue areas engaged in by community organizations"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    ungroup() %>%
+    adorn_percentages() %>%
+    adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_eng_issues_tbls <- map(woc_ind_subgroups, w_eng_issues)
+
+# Create unique df
+for (i in seq(w_eng_issues_tbls)) {
+  assign(paste0("eng_issues_w_", i), w_eng_issues_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Issue areas engaged in by community organizations"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  arrange(desc(n)) %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+eng_issues_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "430px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+eng_issues_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "450px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+eng_issues_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "400px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+eng_issues_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+eng_issues_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "375px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+eng_issues_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+eng_issues_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "450px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+eng_issues_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(eng_issues_w_1, eng_issues_w_2, eng_issues_w_3, eng_issues_w_4, eng_issues_w_5, eng_issues_w_6, eng_issues_w_7, eng_issues_w_8)
+```
+
+
+#### Community Q18. In the past 12 months, which of the following activities have you done? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+
+# Create dataframe with counts by demographic
+ind_demos_df <- ind_clean_df %>%
+  select(respondent_id, race:city) %>%
+  unique() %>%
+  gather(c(race:city), key = "category", value = "group") %>%
+  group_by(category, group) %>%
+  summarize(n = n()) %>%
+  ungroup() %>%
+  group_by(category) %>%
+  mutate(base_size = sum(n)) %>%
+  ungroup() %>%
+  group_by(category, group) %>%
+  mutate(perc = paste(round(n/base_size * 100, 2), "%", sep = ""))
+
+
+# Write function to create single variable tables by demographics
+comm_adv <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Community Advocacy")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    summarize(count = n())
+  #   tabyl(.data[[ind_subgroups]], response) %>%
+  #   adorn_percentages() %>%
+  # adorn_pct_formatting() %>%
+  #   adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+comm_adv_tbls <- map(ind_subgroups, comm_adv)
+
+# Create unique df
+for (i in seq(comm_adv_tbls)) {
+  assign(paste0("comm_adv_t_", i), comm_adv_tbls[[i]])
+}
+
+```
+
+###### Total
+```{r, layout="l-screen-inset"}
+
+ind_clean_df %>%
+    filter(str_detect(question, "Community Advocacy")) %>%
+    group_by(response) %>%
+  summarize(count = n()) %>%
+  mutate(perc = paste(round(count/ind_respondent_count$respondent_count *100,2), "%", sep="")) %>%
+  # kable(align = "c") %>%
+  # kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  # scroll_box(height = "300px")
+    paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+comm_adv_t_1 %>%
+  left_join(ind_demos_df %>% filter(category == "race") %>% select(group, base_size = n),
+            by = c("race" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "450px")
+  # paged_table()
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+comm_adv_t_2 %>%
+    left_join(ind_demos_df %>% filter(category == "gender_identity") %>% select(group, base_size = n),
+            by = c("gender_identity" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+comm_adv_t_3 %>%
+    left_join(ind_demos_df %>% filter(category == "age") %>% select(group, base_size = n),
+            by = c("age" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "420px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+comm_adv_t_4 %>%
+    left_join(ind_demos_df %>% filter(category == "children_range") %>% select(group, base_size = n),
+            by = c("children_range" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "330px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+comm_adv_t_5 %>%
+  left_join(ind_demos_df %>% filter(category == "childrens_caretaker") %>% select(group, base_size = n),
+            by = c("childrens_caretaker" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "210px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+comm_adv_t_6 %>%
+  left_join(ind_demos_df %>% filter(category == "marital_status") %>% select(group, base_size = n),
+            by = c("marital_status" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "350px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+comm_adv_t_7 %>%
+  left_join(ind_demos_df %>% filter(category == "edu_level") %>% select(group, base_size = n),
+            by = c("edu_level" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+comm_adv_t_8 %>%
+  left_join(ind_demos_df %>% filter(category == "household_income") %>% select(group, base_size = n),
+            by = c("household_income" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "600px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+comm_adv_t_9 %>%
+  left_join(ind_demos_df %>% filter(category == "city") %>% select(group, base_size = n),
+            by = c("city" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "450px")
+  # paged_table()
+```
+###### By Voting Importance
+```{r, layout="l-screen-inset"}
+voting_interest <- 
+  ind_clean_df %>%
+  filter(str_detect(question, "How important is voting to you")) %>%
+  select(respondent_id, response) %>%
+  mutate(voting_interest = case_when(
+    (response == "Important" | response == "Very Important") ~ "Voting Is Important/Very Important",
+    (response == "Unimportant" | response == "Very Unimportant") ~ "Voting Is Unimportant/Very Unimportant",
+    TRUE ~ NA_character_)) %>%
+  select(-response)
+
+voting_int_counts <-
+  voting_interest %>%
+  group_by(voting_interest) %>%
+  summarise(base_size = n())
+  
+ind_clean_df %>%
+  filter(str_detect(question, "Community Advocacy")) %>%
+  left_join(voting_interest, by = "respondent_id") %>%
+  group_by(voting_interest, response) %>%
+  summarize(count = n()) %>%
+  left_join(voting_int_counts, by = "voting_interest") %>%
+  mutate(percent = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  filter(!is.na(voting_interest)) %>%
+  select(-c(count, base_size)) %>%
+  spread(key = "voting_interest", value = "percent") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+    # paged_table()
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(comm_adv_t_1, comm_adv_t_2, comm_adv_t_3, comm_adv_t_4, comm_adv_t_5, comm_adv_t_6, comm_adv_t_7, comm_adv_t_8, comm_adv_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Create dataframe with counts by demographic
+w_ind_demos_df <- ind_clean_df %>%
+  select(respondent_id, race:city) %>%
+  filter(woc == "Yes") %>%
+  unique() %>%
+  gather(c(race:city), key = "category", value = "group") %>%
+  group_by(category, group) %>%
+  summarize(n = n()) %>%
+  ungroup() %>%
+  group_by(category) %>%
+  mutate(base_size = sum(n)) %>%
+  ungroup() %>%
+  group_by(category, group) %>%
+  mutate(perc = paste(round(n/base_size * 100, 2), "%", sep = ""))
+
+
+# Write function to create single variable tables by demographics
+w_comm_adv <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Community Advocacy"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    summarize(count = n())
+  #   tabyl(.data[[ind_subgroups]], response) %>%
+  #   adorn_percentages() %>%
+  # adorn_pct_formatting() %>%
+  #   adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_comm_adv_tbls <- map(woc_ind_subgroups, w_comm_adv)
+
+# Create unique df
+for (i in seq(w_comm_adv_tbls)) {
+  assign(paste0("comm_adv_w_", i), w_comm_adv_tbls[[i]])
+}
+
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Community Advocacy"),
+           woc == "Yes") %>%
+  group_by(response) %>%
+  summarize(count = n()) %>%
+  mutate(perc = paste(round(count/ind_respondent_woc_count$woc_respondent_count *100,2), "%", sep="")) %>%
+  # kable(align = "c") %>%
+  # kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  # scroll_box(height = "300px")
+    paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+comm_adv_w_1 %>%
+  left_join(w_ind_demos_df %>% filter(category == "race") %>% select(group, base_size = n),
+            by = c("race" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  filter(!is.na(base_size)) %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "330px")
+  # paged_table()
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+comm_adv_w_2 %>%
+    left_join(w_ind_demos_df %>% filter(category == "age") %>% select(group, base_size = n),
+            by = c("age" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "420px")
+  # paged_table()
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+comm_adv_w_3 %>%
+    left_join(w_ind_demos_df %>% filter(category == "children_range") %>% select(group, base_size = n),
+            by = c("children_range" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "330px")
+  # paged_table()
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+comm_adv_w_4 %>%
+  left_join(w_ind_demos_df %>% filter(category == "childrens_caretaker") %>% select(group, base_size = n),
+            by = c("childrens_caretaker" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "210px")
+  # paged_table()
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+comm_adv_w_5 %>%
+  left_join(w_ind_demos_df %>% filter(category == "marital_status") %>% select(group, base_size = n),
+            by = c("marital_status" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "350px")
+  # paged_table()
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+comm_adv_w_6 %>%
+  left_join(w_ind_demos_df %>% filter(category == "edu_level") %>% select(group, base_size = n),
+            by = c("edu_level" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "450px")
+  # paged_table()
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+comm_adv_w_7 %>%
+  left_join(w_ind_demos_df %>% filter(category == "household_income") %>% select(group, base_size = n),
+            by = c("household_income" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "400px")
+  # paged_table()
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+comm_adv_w_8 %>%
+  left_join(w_ind_demos_df %>% filter(category == "city") %>% select(group, base_size = n),
+            by = c("city" = "group")) %>%
+  mutate(perc = paste(round(count/base_size * 100, 2), "%", se = "")) %>%
+  select(-c(count, category)) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "450px")
+  # paged_table()
+```
+###### By Voting Importance
+```{r, layout="l-screen-inset"}
+voting_interest_woc <- 
+  ind_clean_df %>%
+  filter(str_detect(question, "How important is voting to you"),
+         woc == "Yes") %>%
+  select(respondent_id, response) %>%
+  mutate(voting_interest = case_when(
+    (response == "Important" | response == "Very Important") ~ "Voting Is Important/Very Important",
+    (response == "Unimportant" | response == "Very Unimportant") ~ "Voting Is Unimportant/Very Unimportant",
+    TRUE ~ NA_character_)) %>%
+  select(-response)
+
+voting_int_counts_woc <-
+  voting_interest_woc %>%
+  group_by(voting_interest) %>%
+  summarise(base_size = n())
+  
+ind_clean_df %>%
+  filter(str_detect(question, "Community Advocacy")) %>%
+  left_join(voting_interest_woc, by = "respondent_id") %>%
+  group_by(voting_interest, response) %>%
+  summarize(count = n()) %>%
+  left_join(voting_int_counts_woc, by = "voting_interest") %>%
+  mutate(percent = paste(round((count/base_size)*100, 2), "%", sep = "")) %>%
+  filter(!is.na(voting_interest)) %>%
+  select(-c(count, base_size)) %>%
+  spread(key = "voting_interest", value = "percent") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "300px")
+    # paged_table()
+```
+
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(comm_adv_w_1, comm_adv_w_2, comm_adv_w_3, comm_adv_w_4, comm_adv_w_5, comm_adv_w_6, comm_adv_w_7, comm_adv_w_8)
+```
+
+## Community Advocacy
+#### Community Q9. How easy is it for you to contact an elected official or community leader about an issue affecting you or your community? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+contact_eo <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "How easy is it for you to contact an elected")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[ind_subgroups]], `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`, `Very Easy`)
+}
+
+# Output the individual survey composition across demographics
+contact_eo_tbls <- map(ind_subgroups, contact_eo)
+
+# Create unique df
+for (i in seq(contact_eo_tbls)) {
+  assign(paste0("contact_eo_t_", i), contact_eo_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "How easy is it for you to contact an elected")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+contact_eo_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+contact_eo_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+contact_eo_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+contact_eo_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+contact_eo_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+contact_eo_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+contact_eo_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+contact_eo_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+contact_eo_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(contact_eo_t_1, contact_eo_t_2, contact_eo_t_3, contact_eo_t_4, contact_eo_t_5, contact_eo_t_6, contact_eo_t_7, contact_eo_t_8, contact_eo_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_contact_eo <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "How easy is it for you to contact an elected"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[woc_ind_subgroups]], `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`, `Very Easy`)
+}
+
+# Output the individual survey composition across demographics
+w_contact_eo_tbls <- map(woc_ind_subgroups, w_contact_eo)
+
+# Create unique df
+for (i in seq(w_contact_eo_tbls)) {
+  assign(paste0("contact_eo_w_", i), w_contact_eo_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "How easy is it for you to contact an elected"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+contact_eo_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+contact_eo_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+contact_eo_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+contact_eo_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+contact_eo_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+contact_eo_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+contact_eo_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+###### City
+```{r, layout="l-body-outset"}
+contact_eo_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(contact_eo_w_1, contact_eo_w_2, contact_eo_w_3, contact_eo_w_4, contact_eo_w_5, contact_eo_w_6, contact_eo_w_7, contact_e_w_8)
+```
+
+#### Community Q12. How important is voting to you? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+voting_imp <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "How important is voting to you")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[ind_subgroups]], `Very Unimportant`, `Unimportant`, `Somewhat Unimportant`, `Somewhat Important`, `Important`, `Very Important`)
+}
+
+# Output the individual survey composition across demographics
+voting_imp_tbls <- map(ind_subgroups, voting_imp)
+
+# Create unique df
+for (i in seq(contact_eo_tbls)) {
+  assign(paste0("voting_imp_t_", i), voting_imp_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "How important is voting to you")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+voting_imp_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+voting_imp_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+voting_imp_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+voting_imp_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+voting_imp_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+voting_imp_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+voting_imp_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+voting_imp_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+voting_imp_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(voting_imp_t_1, voting_imp_t_2, voting_imp_t_3, voting_imp_t_4, voting_imp_t_5, voting_imp_t_6, voting_imp_t_7, voting_imp_t_8, voting_imp_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_voting_imp <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "How important is voting to you"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[woc_ind_subgroups]], `Very Unimportant`, `Unimportant`, `Somewhat Unimportant`, `Somewhat Important`, `Important`, `Very Important`)
+}
+
+# Output the individual survey composition across demographics
+w_voting_imp_tbls <- map(woc_ind_subgroups, w_voting_imp)
+
+# Create unique df
+for (i in seq(w_voting_imp_tbls)) {
+  assign(paste0("voting_imp_w_", i), w_voting_imp_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "How important is voting to you"),
+           woc == "Yes") %>%
+  group_by(response) %>%
+  mutate(response = str_trim(response)) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+voting_imp_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+voting_imp_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+voting_imp_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+voting_imp_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+voting_imp_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+voting_imp_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+voting_imp_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+###### City
+```{r, layout="l-body-outset"}
+voting_imp_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(voting_imp_w_1, voting_imp_w_2, voting_imp_w_3, voting_imp_w_4, voting_imp_w_5, voting_imp_w_6, voting_imp_w_7, voting_imp_w_8)
+```
+
+#### Community Q10. Are you legally able to vote? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+legal_vote <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Are you legally able to vote")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+legal_vote_tbls <- map(ind_subgroups, legal_vote)
+
+# Create unique df
+for (i in seq(legal_vote_tbls)) {
+  assign(paste0("legal_vote_t_", i), legal_vote_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Are you legally able to vote")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+legal_vote_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+legal_vote_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+legal_vote_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+legal_vote_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+legal_vote_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+legal_vote_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+legal_vote_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+legal_vote_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+legal_vote_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(legal_vote_t_1, legal_vote_t_2, legal_vote_t_3, legal_vote_t_4, legal_vote_t_5, legal_vote_t_6, legal_vote_t_7, legal_vote_t_8, legal_vote_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_legal_vote <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Are you legally able to vote"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_legal_vote_tbls <- map(woc_ind_subgroups, w_legal_vote)
+
+# Create unique df
+for (i in seq(w_legal_vote_tbls)) {
+  assign(paste0("legal_vote_w_", i), w_legal_vote_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Are you legally able to vote"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+legal_vote_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+legal_vote_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+legal_vote_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+legal_vote_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+legal_vote_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+legal_vote_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+legal_vote_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+###### City
+```{r, layout="l-body-outset"}
+legal_vote_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(legal_vote_w_1, legal_vote_w_2, legal_vote_w_3, legal_vote_w_4, legal_vote_w_5, legal_vote_w_6, legal_vote_w_7, legal_vote_w_8)
+```
+ 
+#### Community Q11. Are you registered to vote? (Among those legally able to vote) {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Create Legal voter column to filter on
+ind_legal_voter <- ind_clean_df %>%
+  filter((str_detect(main_question, "Are you legally able to vote") & response == "Yes")) %>%
+  select(respondent_id, legal_voter = response)
+
+# Write function to create single variable tables by demographics
+vote_reg <- function(ind_subgroups) {
+  ind_clean_df %>% 
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "Are you registered to vote"),
+           legal_voter == "Yes") %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() 
+}
+
+# Output the individual survey composition across demographics
+vote_reg_tbls <- map(ind_subgroups, vote_reg)
+
+# Create unique df
+for (i in seq(contact_eo_tbls)) {
+  assign(paste0("vote_reg_t_", i), vote_reg_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>% 
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "Are you registered to vote"),
+           legal_voter == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+vote_reg_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+vote_reg_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+vote_reg_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+vote_reg_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+vote_reg_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+vote_reg_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+vote_reg_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+vote_reg_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+vote_reg_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(vote_reg_t_1, vote_reg_t_2, vote_reg_t_3, vote_reg_t_4, vote_reg_t_5, vote_reg_t_6, vote_reg_t_7, vote_reg_t_8, vote_reg_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_vote_reg <- function(woc_ind_subgroups) {
+  ind_clean_df %>% 
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "Are you registered to vote"),
+           woc == "Yes",
+           legal_voter == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_vote_reg_tbls <- map(woc_ind_subgroups, w_vote_reg)
+
+# Create unique df
+for (i in seq(w_vote_reg_tbls)) {
+  assign(paste0("vote_reg_w_", i), w_vote_reg_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df  %>% 
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "Are you registered to vote"),
+           woc == "Yes",
+           legal_voter == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+vote_reg_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+vote_reg_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+vote_reg_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+vote_reg_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+vote_reg_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+vote_reg_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+vote_reg_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+###### City
+```{r, layout="l-body-outset"}
+vote_reg_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(vote_reg_w_1, vote_reg_w_2, vote_reg_w_3, vote_reg_w_4, vote_reg_w_5, vote_reg_w_6, vote_reg_w_7, voting_reg_w_8)
+```
+ 
+#### Community Q13. How difficult is it for you to vote? (Among those who are legally able to vote) {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+voting_ease <- function(ind_subgroups) {
+  ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "How difficult is it for you to vote"),
+           legal_voter == "Yes") %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[ind_subgroups]], `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`)
+}
+
+# Output the individual survey composition across demographics
+voting_ease_tbls <- map(ind_subgroups, voting_ease)
+
+# Create unique df
+for (i in seq(contact_eo_tbls)) {
+  assign(paste0("voting_ease_t_", i), voting_ease_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "How difficult is it for you to vote"),
+           legal_voter == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+voting_ease_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+voting_ease_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+voting_ease_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+voting_ease_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+voting_ease_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+voting_ease_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+voting_ease_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+voting_ease_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+voting_ease_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(voting_ease_t_1, voting_ease_t_2, voting_ease_t_3, voting_ease_t_4, voting_ease_t_5, voting_ease_t_6, voting_ease_t_7, voting_ease_t_8, voting_ease_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_voting_ease <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "How difficult is it for you to vote"),
+           woc == "Yes",
+           legal_voter == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[woc_ind_subgroups]], `Very Difficult`, `Difficult`, `Somewhat Difficult`, `Somewhat Easy`, `Easy`)
+}
+
+# Output the individual survey composition across demographics
+w_voting_ease_tbls <- map(woc_ind_subgroups, w_voting_ease)
+
+# Create unique df
+for (i in seq(w_voting_ease_tbls)) {
+  assign(paste0("voting_ease_w_", i), w_voting_ease_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "How difficult is it for you to vote"),
+           woc == "Yes",
+           legal_voter == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+voting_ease_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+voting_ease_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+voting_ease_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+voting_ease_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+voting_ease_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+voting_ease_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+voting_ease_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+###### City
+```{r, layout="l-body-outset"}
+voting_ease_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(voting_ease_w_1, voting_ease_w_2, voting_ease_w_3, voting_ease_w_4, voting_ease_w_5, voting_ease_w_6, voting_ease_w_7, voting_ease_w_8)
+```
+
+#### Community Q14. What makes voting difficult for you? (Among respondents who said it was Difficult or Very Difficult for them to vote) {.tabset}
+##### All Respondents {.tabset}
+``` {r, layout="l-body-outset"}
+voting_barriers <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Barriers to voting")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(.data[[ind_subgroups]]) %>%
+    mutate(base_size = sum(count),
+           perc = paste(round(count/base_size * 100, 2), "%", sep = "")) %>%
+    select(-count) %>%
+    spread(key = "response", value = "perc")
+}
+
+# Output the individual survey composition across demographics
+voting_barriers_tbls <- map(ind_subgroups, voting_barriers)
+
+# Create unique df
+for (i in seq(voting_barriers_tbls)) {
+  assign(paste0("voting_barriers_t_", i), voting_barriers_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Barriers to voting")) %>%
+    group_by(response) %>%
+  summarize(count = n()) %>%
+    # tabyl(response) %>%
+    # adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+voting_barriers_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+voting_barriers_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+voting_barriers_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+voting_barriers_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+voting_barriers_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+voting_barriers_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+voting_barriers_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+voting_barriers_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### City
+```{r, layout="l-body-outset"}
+voting_barriers_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+``` {r}
+# Remove datasets to keep environment clean
+rm(voting_barriers_t_1, voting_barriers_t_2, voting_barriers_t_3, voting_barriers_t_4, voting_barriers_t_5, voting_barriers_t_6, voting_barriers_t_7, voting_barriers_t_8, voting_barriers_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+``` {r, layout="l-body-outset"}
+w_voting_barriers <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Barriers to voting"),
+           woc == "Yes") %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(.data[[ind_subgroups]]) %>%
+    mutate(base_size = sum(count),
+           perc = paste(round(count/base_size * 100, 2), "%", sep = "")) %>%
+    select(-count) %>%
+    spread(key = "response", value = "perc")
+}
+
+# Output the individual survey composition across demographics
+w_voting_barriers_tbls <- map(ind_subgroups, w_voting_barriers)
+
+# Create unique df
+for (i in seq(w_voting_barriers_tbls)) {
+  assign(paste0("voting_barriers_w_", i), w_voting_barriers_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Barriers to voting"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+  summarize(count = n()) %>%
+    # tabyl(response) %>%
+    # adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+voting_barriers_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+voting_barriers_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+voting_barriers_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+voting_barriers_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+voting_barriers_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+voting_barriers_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+voting_barriers_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### City
+```{r, layout="l-body-outset"}
+voting_barriers_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+``` {r}
+# Remove datasets to keep environment clean
+rm(voting_barriers_w_1, voting_barriers_w_2, voting_barriers_w_3, voting_barriers_w_4, voting_barriers_w_5, voting_barriers_w_6, voting_barriers_w_7, voting_barriers_w_8)
+```
+
+
+#### Community Q15. How likely are you to vote in the upcoming November election? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+nov_election <- function(ind_subgroups) {
+  ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "November election"),
+           legal_voter == "Yes") %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[ind_subgroups]], `Not at All Likely`, `Unlikely`, `Somewhat Unlikely`, `Somewhat Likely`, `Likely`, `Very Likely`)
+}
+
+# Output the individual survey composition across demographics
+nov_election_tbls <- map(ind_subgroups, nov_election)
+
+# Create unique df
+for (i in seq(contact_eo_tbls)) {
+  assign(paste0("nov_election_t_", i), nov_election_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "November election"),
+           legal_voter == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+nov_election_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+nov_election_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+nov_election_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+nov_election_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+nov_election_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+nov_election_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+nov_election_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+nov_election_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+nov_election_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(nov_election_t_1, nov_election_t_2, nov_election_t_3, nov_election_t_4, nov_election_t_5, nov_election_t_6, nov_election_t_7, nov_election_t_8, nov_election_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_nov_election <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "November election"),
+           woc == "Yes",
+           legal_voter == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns() %>%
+    select(.data[[woc_ind_subgroups]], `Not at All Likely`, `Unlikely`, `Somewhat Likely`, `Likely`, `Very Likely`)
+}
+
+# Output the individual survey composition across demographics
+w_nov_election_tbls <- map(woc_ind_subgroups, w_nov_election)
+
+# Create unique df
+for (i in seq(w_nov_election_tbls)) {
+  assign(paste0("nov_election_w_", i), w_nov_election_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    left_join(ind_legal_voter, by = c("respondent_id" = "respondent_id")) %>%
+    filter(str_detect(question, "November election"),
+           woc == "Yes",
+           legal_voter == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+nov_election_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+nov_election_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+nov_election_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+nov_election_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+nov_election_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+nov_election_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+nov_election_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+###### City
+```{r, layout="l-body-outset"}
+nov_election_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(nov_election_w_1, nov_election_w_2, nov_election_w_3, nov_election_w_4, nov_election_w_5, nov_election_w_6, nov_election_w_7, nov_election_w_8)
+```
+
+
+#### Community Q16. Do you want to be involved in decisions that impact you and your community? {.tabset}
+##### All Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+involved <- function(ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Do you want to be involved")) %>%
+    group_by(.data[[ind_subgroups]], response) %>%
+    tabyl(.data[[ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+involved_tbls <- map(ind_subgroups, involved)
+
+# Create unique df
+for (i in seq(contact_eo_tbls)) {
+  assign(paste0("involved_t_", i), involved_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Do you want to be involved")) %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+involved_t_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Gender Identity
+```{r, layout="l-body-outset"}
+involved_t_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+involved_t_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+involved_t_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+involved_t_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+involved_t_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+involved_t_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+involved_t_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+
+###### City
+```{r, layout="l-body-outset"}
+involved_t_9 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(involved_t_1, involved_t_2, involved_t_3, involved_t_4, involved_t_5, involved_t_6, involved_t_7, involved_t_8, involved_t_9)
+```
+
+##### Women of Color Respondents {.tabset}
+```{r}
+# Write function to create single variable tables by demographics
+w_involved <- function(woc_ind_subgroups) {
+  ind_clean_df %>%
+    filter(str_detect(question, "Do you want to be involved"),
+           woc == "Yes") %>%
+    group_by(.data[[woc_ind_subgroups]], response) %>%
+    tabyl(.data[[woc_ind_subgroups]], response) %>%
+    adorn_percentages() %>%
+  adorn_pct_formatting() %>%
+    adorn_ns()
+}
+
+# Output the individual survey composition across demographics
+w_involved_tbls <- map(woc_ind_subgroups, w_involved)
+
+# Create unique df
+for (i in seq(w_involved_tbls)) {
+  assign(paste0("involved_w_", i), w_involved_tbls[[i]])
+}
+```
+
+###### Total
+```{r, layout="l-body-outset"}
+ind_clean_df %>%
+    filter(str_detect(question, "Do you want to be involved"),
+           woc == "Yes") %>%
+    group_by(response) %>%
+    tabyl(response) %>%
+    adorn_pct_formatting() %>%
+  paged_table()
+```
+
+###### Race
+```{r, layout="l-body-outset"}
+involved_w_1 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Age Band
+```{r, layout="l-body-outset"}
+involved_w_2 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Num of Children
+```{r, layout="l-body-outset"}
+involved_w_3 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "250px")
+```
+
+###### Is Children's Caretaker
+```{r, layout="l-body-outset"}
+involved_w_4 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "150px")
+```
+
+###### Marital Status
+```{r, layout="l-body-outset"}
+involved_w_5 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+
+###### Education Level
+```{r, layout="l-body-outset"}
+involved_w_6 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+###### Household Income
+```{r, layout="l-body-outset"}
+involved_w_7 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "280px")
+```
+###### City
+```{r, layout="l-body-outset"}
+involved_w_8 %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "370px")
+```
+
+```{r}
+# Remove all datasets to keep environment clean
+rm(involved_w_1, involved_w_2, involved_w_3, involved_w_4, involved_w_5, involved_w_6, involved_w_7, involved_w_8)
+```
+
+#### Organizational Public Policy
+##### Org Q19. Does your organization aspire to create policy which impacts your community members? {.tabset}
+###### All Organizations
+```{r, , layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(question, "aspire to create policy")) %>%
+  select(-main_question) %>%
+  group_by(response) %>%
+  summarize(count = n()) %>%
+  mutate(perc = paste(round(count/org_respondent_count$respondent_count*100,2), "%", sep="")) %>%
+  paged_table()
+```
+
+###### By Organization Type
+```{r, , layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(question, "aspire to create policy"),
+         !is.na(response)) %>%
+  select(-main_question) %>%
+  group_by(org_type, response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(org_type) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round(count/base_size*100,2), "%", sep="")) %>%
+  select(org_type, response, base_size, perc) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+  # paged_table()
+```
+
+##### Org Q20. Average number of times in the past 12 months that organizations met with government officials to influence policy impacting their communities. {.tabset}
+###### All Organizations
+```{r, , layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(question, "past 12 months")) %>%
+  select(-main_question) %>%
+  mutate(response = as.numeric(response)) %>%
+  unique() %>%
+  summarize(avg = round(mean(response, na.rm = TRUE),0)) %>%
+  kable()
+```
+###### Histogram
+```{r, , layout="l-body-outset"}
+eng_hist <- comm_org_clean %>%
+  filter(str_detect(question, "past 12 months")) %>%
+  select(-main_question) %>%
+  mutate(response = as.numeric(response))
+
+  hist(eng_hist$response,
+       main = paste("Histogram of Number of Times In The Past 12 Months a Community Org Engaged With Government Officials"))
+```
+
+###### By Organization Type
+```{r, , layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(question, "past 12 months")) %>%
+  select(-main_question) %>%
+  mutate(response = as.numeric(response)) %>%
+  group_by(org_type) %>%
+  summarize(base_size = n(),
+            avg = round(mean(response, na.rm = TRUE),0)) %>%
+  paged_table()
+```
+###### By Focal Area
+```{r, , layout="l-body-outset"}
+
+focal_areas <-
+  comm_org_clean %>%
+  filter(question == "Focal Areas") %>%
+  select(respondent_id, response) %>%
+  unique() %>%
+  filter(!is.na(response)) %>%
+  rename(focal_areas = response)
+  
+comm_org_clean %>%
+  filter(str_detect(question, "past 12 months")) %>%
+  select(-c(main_question, org_type)) %>%
+  left_join(focal_areas, by = "respondent_id") %>%
+  mutate(response = as.numeric(response)) %>%
+  group_by(focal_areas) %>%
+  summarize(base_size = n(),
+            avg = round(mean(response, na.rm = TRUE),0)) %>%
+  arrange(desc(base_size)) %>%
+  filter(!is.na(focal_areas)) %>%
+  paged_table()
+```
+
+##### Org Q21. Does your organization create opportunities for community members to engage with local leaders on issues important to them? {.tabset}
+###### All Organizations
+```{r, , layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(question, "create opportunities")) %>%
+  select(-main_question) %>%
+  group_by(response) %>%
+  summarize(count = n()) %>%
+  mutate(perc = paste(round(count/org_respondent_count$respondent_count*100,2), "%", sep="")) %>%
+  paged_table()
+```
+
+###### By Organization Type
+```{r, , layout="l-body-outset"}
+comm_org_clean %>%
+  filter(str_detect(question, "create opportunities"),
+         !is.na(response)) %>%
+  select(-main_question) %>%
+  group_by(org_type, response) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(org_type) %>%
+  mutate(base_size = sum(count),
+         perc = paste(round(count/base_size*100,2), "%", sep="")) %>%
+  select(org_type, response, base_size, perc) %>%
+  spread(key = "response", value = "perc") %>%
+  kable(align = "c") %>%
+  kable_styling(c("striped","hover", "condensed"),fixed_thead = T, full_width = F) %>%
+  scroll_box(height = "200px")
+  # paged_table()
+```
